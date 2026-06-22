@@ -3,21 +3,30 @@
 """
 ddtui - a tiny ASCII / curses dashboard for DDraceNetwork (DDNet).
 
-Two tools in one, picked from an interactive menu (like `iuse`):
+Tools, picked from an interactive menu (like `iuse`):
 
-  * STATS   - look up a player: points, global / team ranks, points by map
-              type, recent finishes, favorite server. (ddnet.org json2 API)
-  * SERVERS - live server browser: search online servers, see map, gametype,
-              ping region and the players currently online.
-              (master1.ddnet.org HTTPS masterserver)
+  * STATS    - look up a player: points, global / team ranks, points by map
+               type, recent finishes, favorite server. (ddnet.org json2 API)
+  * SERVERS  - live server browser: search online servers, map, gametype,
+               ping region and the players currently online.
+  * OVERVIEW - master-server overview: total players online, by region,
+               by gametype and the most populated maps right now.
+  * FIND     - find which online servers a given player name is on right now.
+  * COMPARE  - compare two players side by side (points & ranks).
+  * MAP      - map info: type, difficulty, mapper, finishes, median time
+               and the current top ranks. (ddnet.org maps json API)
 
 Pure Python 3 standard library, zero dependencies. RU/EN auto-localized.
 
 Usage:
-    python3 ddtui.py                 # interactive GUI (menu)
-    python3 ddtui.py nameless tee     # direct player lookup
-    python3 ddtui.py --servers        # dump the server list
-    python3 ddtui.py -p "Cor" --json  # raw JSON for scripting
+    python3 ddtui.py                  # interactive GUI (menu)
+    python3 ddtui.py nameless tee      # direct player lookup
+    python3 ddtui.py --servers         # dump the server list
+    python3 ddtui.py --overview        # master-server overview
+    python3 ddtui.py --find nameless   # where is this player online
+    python3 ddtui.py -c nameless cor   # compare two players
+    python3 ddtui.py --map Kobra       # map info
+    python3 ddtui.py -p "Cor" --json   # raw JSON for scripting
 
 MIT License.
 """
@@ -32,10 +41,11 @@ import unicodedata
 import urllib.parse
 import urllib.request
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 PLAYER_API = "https://ddnet.org/players/?json2="
 SERVERS_API = "https://master1.ddnet.org/ddnet/15/servers.json"
+MAPS_API = "https://ddnet.org/maps/?json="
 USER_AGENT = "ddtui/%s (+https://github.com/wetair1)" % __version__
 
 
@@ -58,62 +68,100 @@ LANG = detect_lang()
 
 STR = {
     "ru": {
-        "mode_title": "ddtui \u2014 что смотрим?",
-        "mode_hint": " \u2191\u2193 \u00b7 Enter \u2014 выбрать \u00b7 Esc \u2014 выход",
-        "mode_stats": "Статистика игрока",
-        "mode_servers": "Браузер серверов (онлайн)",
-        "prompt_player": " Имя игрока (точное, как в игре):",
-        "prompt_keys": " Enter \u2014 искать \u00b7 Esc \u2014 назад",
-        "loading": "Загрузка\u2026",
-        "net_error": "Ошибка сети: %s",
-        "not_found": "Игрок \u00ab%s\u00bb не найден.",
-        "no_servers": "Серверы не найдены.",
-        "srv_pick_title": " ddtui \u2014 серверы: выбери (Enter \u2014 детали)",
-        "srv_pick_hint": " Печатай для поиска \u00b7 \u2191\u2193 \u00b7 Enter \u2014 детали \u00b7 Esc \u2014 назад",
-        "srv_none_match": " Ничего не найдено. Измени запрос или Backspace.",
-        "scroll_hint": " \u2191\u2193/PgUp/PgDn \u2014 листать \u00b7 Esc \u2014 назад",
-        "players_online": "игроков онлайн",
-        "cancelled": "Отменено.",
-        "l_points": "очки",
-        "l_global": "мировой ранг",
-        "l_team": "командный ранг",
-        "l_year": "за год",
-        "l_month": "за месяц",
-        "l_week": "за неделю",
-        "l_fav": "любимый сервер",
-        "l_first": "первый финиш",
-        "l_hours": "часов за год",
-        "l_bytype": "очки по типам карт",
-        "l_last": "последние финиши",
-        "l_map": "карта",
-        "l_gametype": "режим",
-        "l_region": "регион",
-        "l_version": "версия",
-        "l_players": "игроки",
-        "unranked": "без ранга",
-        "h_player": "имя игрока для статистики",
-        "h_p": "имя игрока (можно с пробелами)",
-        "h_servers": "показать список серверов и выйти",
-        "h_theme": "цветовая тема",
-        "h_filter": "фильтр серверов по подстроке",
-        "h_limit": "сколько серверов показать (по умолчанию 40)",
-        "h_json": "вывести сырой JSON",
-        "h_nocolor": "отключить цвет",
-        "desc": "ddtui \u2014 ASCII-дашборд DDNet: статистика игрока + браузер серверов.",
-        "epilog": "Без аргументов открывается интерактивное меню.",
-        "curses_required": "Нужен модуль curses (или запусти с аргументом, например: ddtui.py nameless)",
+        "mode_title": "ddtui \u2014 \u0447\u0442\u043e \u0441\u043c\u043e\u0442\u0440\u0438\u043c?",
+        "mode_hint": " \u2191\u2193 \u00b7 Enter \u2014 \u0432\u044b\u0431\u0440\u0430\u0442\u044c \u00b7 Esc \u2014 \u0432\u044b\u0445\u043e\u0434",
+        "mode_stats": "\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0430 \u0438\u0433\u0440\u043e\u043a\u0430",
+        "mode_servers": "\u0411\u0440\u0430\u0443\u0437\u0435\u0440 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u0432 (\u043e\u043d\u043b\u0430\u0439\u043d)",
+        "mode_overview": "\u041e\u0431\u0437\u043e\u0440 \u043c\u0430\u0441\u0442\u0435\u0440-\u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        "mode_find": "\u041d\u0430\u0439\u0442\u0438 \u0438\u0433\u0440\u043e\u043a\u0430 \u043e\u043d\u043b\u0430\u0439\u043d",
+        "mode_compare": "\u0421\u0440\u0430\u0432\u043d\u0438\u0442\u044c \u0434\u0432\u0443\u0445 \u0438\u0433\u0440\u043e\u043a\u043e\u0432",
+        "mode_map": "\u0418\u043d\u0444\u043e \u043e \u043a\u0430\u0440\u0442\u0435",
+        "prompt_player": " \u0418\u043c\u044f \u0438\u0433\u0440\u043e\u043a\u0430 (\u0442\u043e\u0447\u043d\u043e, \u043a\u0430\u043a \u0432 \u0438\u0433\u0440\u0435):",
+        "prompt_find": " \u0418\u043c\u044f \u0438\u0433\u0440\u043e\u043a\u0430 \u0434\u043b\u044f \u043f\u043e\u0438\u0441\u043a\u0430 \u043e\u043d\u043b\u0430\u0439\u043d:",
+        "prompt_map": " \u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043a\u0430\u0440\u0442\u044b:",
+        "prompt_cmp1": " \u041f\u0435\u0440\u0432\u044b\u0439 \u0438\u0433\u0440\u043e\u043a:",
+        "prompt_cmp2": " \u0412\u0442\u043e\u0440\u043e\u0439 \u0438\u0433\u0440\u043e\u043a:",
+        "prompt_keys": " Enter \u2014 \u0438\u0441\u043a\u0430\u0442\u044c \u00b7 Esc \u2014 \u043d\u0430\u0437\u0430\u0434",
+        "loading": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430\u2026",
+        "net_error": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0442\u0438: %s",
+        "not_found": "\u0418\u0433\u0440\u043e\u043a \u00ab%s\u00bb \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d.",
+        "map_not_found": "\u041a\u0430\u0440\u0442\u0430 \u00ab%s\u00bb \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430.",
+        "no_servers": "\u0421\u0435\u0440\u0432\u0435\u0440\u044b \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b.",
+        "find_none": "\u0418\u0433\u0440\u043e\u043a \u00ab%s\u00bb \u0441\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u043d\u0438 \u043d\u0430 \u043e\u0434\u043d\u043e\u043c \u0441\u0435\u0440\u0432\u0435\u0440\u0435.",
+        "srv_pick_title": " ddtui \u2014 \u0441\u0435\u0440\u0432\u0435\u0440\u044b: \u0432\u044b\u0431\u0435\u0440\u0438 (Enter \u2014 \u0434\u0435\u0442\u0430\u043b\u0438)",
+        "srv_pick_hint": " \u041f\u0435\u0447\u0430\u0442\u0430\u0439 \u0434\u043b\u044f \u043f\u043e\u0438\u0441\u043a\u0430 \u00b7 \u2191\u2193 \u00b7 Enter \u2014 \u0434\u0435\u0442\u0430\u043b\u0438 \u00b7 Esc \u2014 \u043d\u0430\u0437\u0430\u0434",
+        "srv_none_match": " \u041d\u0438\u0447\u0435\u0433\u043e \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u043e. \u0418\u0437\u043c\u0435\u043d\u0438 \u0437\u0430\u043f\u0440\u043e\u0441 \u0438\u043b\u0438 Backspace.",
+        "scroll_hint": " \u2191\u2193/PgUp/PgDn \u2014 \u043b\u0438\u0441\u0442\u0430\u0442\u044c \u00b7 Esc \u2014 \u043d\u0430\u0437\u0430\u0434",
+        "players_online": "\u0438\u0433\u0440\u043e\u043a\u043e\u0432 \u043e\u043d\u043b\u0430\u0439\u043d",
+        "cancelled": "\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e.",
+        "l_points": "\u043e\u0447\u043a\u0438",
+        "l_global": "\u043c\u0438\u0440\u043e\u0432\u043e\u0439 \u0440\u0430\u043d\u0433",
+        "l_team": "\u043a\u043e\u043c\u0430\u043d\u0434\u043d\u044b\u0439 \u0440\u0430\u043d\u0433",
+        "l_year": "\u0437\u0430 \u0433\u043e\u0434",
+        "l_month": "\u0437\u0430 \u043c\u0435\u0441\u044f\u0446",
+        "l_week": "\u0437\u0430 \u043d\u0435\u0434\u0435\u043b\u044e",
+        "l_fav": "\u043b\u044e\u0431\u0438\u043c\u044b\u0439 \u0441\u0435\u0440\u0432\u0435\u0440",
+        "l_first": "\u043f\u0435\u0440\u0432\u044b\u0439 \u0444\u0438\u043d\u0438\u0448",
+        "l_hours": "\u0447\u0430\u0441\u043e\u0432 \u0437\u0430 \u0433\u043e\u0434",
+        "l_bytype": "\u043e\u0447\u043a\u0438 \u043f\u043e \u0442\u0438\u043f\u0430\u043c \u043a\u0430\u0440\u0442",
+        "l_last": "\u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0444\u0438\u043d\u0438\u0448\u0438",
+        "l_map": "\u043a\u0430\u0440\u0442\u0430",
+        "l_gametype": "\u0440\u0435\u0436\u0438\u043c",
+        "l_region": "\u0440\u0435\u0433\u0438\u043e\u043d",
+        "l_version": "\u0432\u0435\u0440\u0441\u0438\u044f",
+        "l_players": "\u0438\u0433\u0440\u043e\u043a\u0438",
+        "l_type": "\u0442\u0438\u043f",
+        "l_difficulty": "\u0441\u043b\u043e\u0436\u043d\u043e\u0441\u0442\u044c",
+        "l_mapper": "\u043c\u0430\u043f\u043f\u0435\u0440",
+        "l_release": "\u0440\u0435\u043b\u0438\u0437",
+        "l_finishes": "\u0444\u0438\u043d\u0438\u0448\u0435\u0439",
+        "l_finishers": "\u0444\u0438\u043d\u0438\u0448\u0435\u0440\u043e\u0432",
+        "l_median": "\u043c\u0435\u0434\u0438\u0430\u043d\u043d\u043e\u0435 \u0432\u0440\u0435\u043c\u044f",
+        "l_toprank": "\u0442\u043e\u043f \u0440\u0430\u043d\u0433\u0438",
+        "l_byregion": "\u0438\u0433\u0440\u043e\u043a\u0438 \u043f\u043e \u0440\u0435\u0433\u0438\u043e\u043d\u0430\u043c",
+        "l_bygametype": "\u0438\u0433\u0440\u043e\u043a\u0438 \u043f\u043e \u0440\u0435\u0436\u0438\u043c\u0430\u043c",
+        "l_topmaps": "\u0441\u0430\u043c\u044b\u0435 \u043f\u043e\u043f\u0443\u043b\u044f\u0440\u043d\u044b\u0435 \u043a\u0430\u0440\u0442\u044b",
+        "l_totalservers": "\u0432\u0441\u0435\u0433\u043e \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u0432",
+        "l_occupied": "\u0441 \u0438\u0433\u0440\u043e\u043a\u0430\u043c\u0438",
+        "unranked": "\u0431\u0435\u0437 \u0440\u0430\u043d\u0433\u0430",
+        "h_player": "\u0438\u043c\u044f \u0438\u0433\u0440\u043e\u043a\u0430 \u0434\u043b\u044f \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0438",
+        "h_p": "\u0438\u043c\u044f \u0438\u0433\u0440\u043e\u043a\u0430 (\u043c\u043e\u0436\u043d\u043e \u0441 \u043f\u0440\u043e\u0431\u0435\u043b\u0430\u043c\u0438)",
+        "h_servers": "\u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u0432 \u0438 \u0432\u044b\u0439\u0442\u0438",
+        "h_overview": "\u043e\u0431\u0437\u043e\u0440 \u043c\u0430\u0441\u0442\u0435\u0440-\u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0438 \u0432\u044b\u0439\u0442\u0438",
+        "h_find": "\u043d\u0430\u0439\u0442\u0438, \u043d\u0430 \u043a\u0430\u043a\u0438\u0445 \u0441\u0435\u0440\u0432\u0435\u0440\u0430\u0445 \u0438\u0433\u0440\u043e\u043a \u043e\u043d\u043b\u0430\u0439\u043d",
+        "h_compare": "\u0441\u0440\u0430\u0432\u043d\u0438\u0442\u044c \u0434\u0432\u0443\u0445 \u0438\u0433\u0440\u043e\u043a\u043e\u0432",
+        "h_map": "\u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0438\u043d\u0444\u043e \u043e \u043a\u0430\u0440\u0442\u0435",
+        "h_theme": "\u0446\u0432\u0435\u0442\u043e\u0432\u0430\u044f \u0442\u0435\u043c\u0430",
+        "h_filter": "\u0444\u0438\u043b\u044c\u0442\u0440 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u0432 \u043f\u043e \u043f\u043e\u0434\u0441\u0442\u0440\u043e\u043a\u0435",
+        "h_limit": "\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u0432 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c (\u043f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e 40)",
+        "h_json": "\u0432\u044b\u0432\u0435\u0441\u0442\u0438 \u0441\u044b\u0440\u043e\u0439 JSON",
+        "h_nocolor": "\u043e\u0442\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0446\u0432\u0435\u0442",
+        "h_listthemes": "\u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0442\u0435\u043c\u044b \u0438 \u0432\u044b\u0439\u0442\u0438",
+        "desc": "ddtui \u2014 ASCII-\u0434\u0430\u0448\u0431\u043e\u0440\u0434 DDNet: \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0430, \u0441\u0435\u0440\u0432\u0435\u0440\u044b, \u043e\u0431\u0437\u043e\u0440, \u043f\u043e\u0438\u0441\u043a, \u0441\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u0435 \u0438 \u043a\u0430\u0440\u0442\u044b.",
+        "epilog": "\u0411\u0435\u0437 \u0430\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u043e\u0432 \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u0442\u0441\u044f \u0438\u043d\u0442\u0435\u0440\u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e.",
+        "curses_required": "\u041d\u0443\u0436\u0435\u043d \u043c\u043e\u0434\u0443\u043b\u044c curses (\u0438\u043b\u0438 \u0437\u0430\u043f\u0443\u0441\u0442\u0438 \u0441 \u0430\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u043e\u043c, \u043d\u0430\u043f\u0440\u0438\u043c\u0435\u0440: ddtui.py nameless)",
     },
     "en": {
         "mode_title": "ddtui \u2014 what do you want?",
         "mode_hint": " \u2191\u2193 \u00b7 Enter \u2014 select \u00b7 Esc \u2014 quit",
         "mode_stats": "Player stats",
         "mode_servers": "Server browser (online)",
+        "mode_overview": "Master-server overview",
+        "mode_find": "Find player online",
+        "mode_compare": "Compare two players",
+        "mode_map": "Map info",
         "prompt_player": " Player name (exact, as in game):",
+        "prompt_find": " Player name to find online:",
+        "prompt_map": " Map name:",
+        "prompt_cmp1": " First player:",
+        "prompt_cmp2": " Second player:",
         "prompt_keys": " Enter \u2014 search \u00b7 Esc \u2014 back",
         "loading": "Loading\u2026",
         "net_error": "Network error: %s",
         "not_found": "Player \u00ab%s\u00bb not found.",
+        "map_not_found": "Map \u00ab%s\u00bb not found.",
         "no_servers": "No servers found.",
+        "find_none": "Player \u00ab%s\u00bb is not on any server right now.",
         "srv_pick_title": " ddtui \u2014 servers: pick one (Enter \u2014 details)",
         "srv_pick_hint": " Type to search \u00b7 \u2191\u2193 \u00b7 Enter \u2014 details \u00b7 Esc \u2014 back",
         "srv_none_match": " Nothing found. Change the query or Backspace.",
@@ -136,16 +184,34 @@ STR = {
         "l_region": "region",
         "l_version": "version",
         "l_players": "players",
+        "l_type": "type",
+        "l_difficulty": "difficulty",
+        "l_mapper": "mapper",
+        "l_release": "release",
+        "l_finishes": "finishes",
+        "l_finishers": "finishers",
+        "l_median": "median time",
+        "l_toprank": "top ranks",
+        "l_byregion": "players by region",
+        "l_bygametype": "players by gametype",
+        "l_topmaps": "most populated maps",
+        "l_totalservers": "total servers",
+        "l_occupied": "with players",
         "unranked": "unranked",
         "h_player": "player name to show stats for",
         "h_p": "player name (may contain spaces)",
         "h_servers": "print the server list and exit",
+        "h_overview": "print a master-server overview and exit",
+        "h_find": "find which servers a player is on right now",
+        "h_compare": "compare two players",
+        "h_map": "show info for a map",
         "h_theme": "color theme",
         "h_filter": "filter servers by substring",
         "h_limit": "how many servers to show (default 40)",
         "h_json": "print raw JSON",
         "h_nocolor": "disable color",
-        "desc": "ddtui \u2014 ASCII DDNet dashboard: player stats + server browser.",
+        "h_listthemes": "list available themes and exit",
+        "desc": "ddtui \u2014 ASCII DDNet dashboard: stats, servers, overview, find, compare and maps.",
         "epilog": "With no arguments an interactive menu opens.",
         "curses_required": "curses module required (or run with an argument, e.g.: ddtui.py nameless)",
     },
@@ -165,11 +231,22 @@ RESET = "\x1b[0m"
 
 THEMES = {
     # name: (border, title, label, value, accent, dim)
-    "ddnet":  ("39", "81;1", "45", "97", "118", "240"),
-    "matrix": ("34", "46;1", "40", "82", "118", "240"),
-    "amber":  ("94", "214;1", "136", "223", "208", "240"),
-    "nord":   ("66", "110;1", "73", "189", "152", "240"),
-    "mono":   ("244", "255;1", "250", "255", "248", "240"),
+    "ddnet":      ("39", "81;1", "45", "97", "118", "240"),
+    "matrix":     ("34", "46;1", "40", "82", "118", "240"),
+    "amber":      ("94", "214;1", "136", "223", "208", "240"),
+    "nord":       ("66", "110;1", "73", "189", "152", "240"),
+    "mono":       ("244", "255;1", "250", "255", "248", "240"),
+    "dracula":    ("141", "212;1", "117", "253", "84", "240"),
+    "gruvbox":    ("172", "214;1", "109", "223", "142", "240"),
+    "tokyonight": ("61", "111;1", "75", "253", "158", "240"),
+    "solarized":  ("37", "33;1", "244", "230", "136", "240"),
+    "synthwave":  ("201", "213;1", "99", "219", "51", "240"),
+    "ocean":      ("31", "39;1", "37", "195", "80", "240"),
+    "crimson":    ("124", "196;1", "131", "224", "203", "240"),
+    "forest":     ("28", "40;1", "65", "194", "113", "240"),
+    "grape":      ("55", "135;1", "98", "225", "171", "240"),
+    "coffee":     ("94", "180;1", "137", "223", "173", "240"),
+    "ice":        ("45", "159;1", "117", "195", "87", "240"),
 }
 
 
@@ -286,6 +363,10 @@ def fetch_servers(timeout=15):
     return data.get("servers", []) if isinstance(data, dict) else []
 
 
+def fetch_map(name, timeout=12):
+    return http_json(MAPS_API + urllib.parse.quote(name), timeout=timeout)
+
+
 # --------------------------------------------------------------------------- #
 # Formatting helpers                                                          #
 # --------------------------------------------------------------------------- #
@@ -365,6 +446,69 @@ def fuzzy_match(query, *fields):
         return True
     it = iter(hay)
     return all(ch in it for ch in q)
+
+
+# --------------------------------------------------------------------------- #
+# Aggregations (pure, offline-testable)                                       #
+# --------------------------------------------------------------------------- #
+
+def master_overview(servers):
+    """Aggregate the master server list into a summary dict."""
+    total = 0
+    occupied = 0
+    players = 0
+    by_region = {}
+    by_gametype = {}
+    by_map = {}
+    for srv in servers:
+        s = server_summary(srv)
+        total += 1
+        p = s["players"]
+        if p > 0:
+            occupied += 1
+        players += p
+        region = str(s["region"]).upper()
+        by_region[region] = by_region.get(region, 0) + p
+        by_gametype[s["gametype"]] = by_gametype.get(s["gametype"], 0) + p
+        if p > 0:
+            by_map[s["map"]] = by_map.get(s["map"], 0) + p
+    return {
+        "servers": total,
+        "occupied": occupied,
+        "players": players,
+        "by_region": by_region,
+        "by_gametype": by_gametype,
+        "by_map": by_map,
+    }
+
+
+def find_player_servers(servers, name):
+    """Return list of (summary, matched_client) where a client matches name."""
+    needle = name.lower().strip()
+    hits = []
+    for srv in servers:
+        s = server_summary(srv)
+        for c in s["clients"]:
+            cname = str(c.get("name", ""))
+            if needle and needle in cname.lower():
+                hits.append((s, c))
+    hits.sort(key=lambda x: (-x[0]["players"], x[0]["name"].lower()))
+    return hits
+
+
+def _top(counter, n=10):
+    items = [(k, v) for k, v in counter.items() if v > 0]
+    items.sort(key=lambda kv: (-kv[1], str(kv[0]).lower()))
+    return items[:n]
+
+
+def difficulty_stars(diff):
+    try:
+        d = int(diff)
+    except (TypeError, ValueError):
+        return "?"
+    d = max(0, min(5, d))
+    return "\u2605" * d + "\u2606" * (5 - d)
 
 
 # --------------------------------------------------------------------------- #
@@ -473,6 +617,118 @@ def server_detail_lines(style, srv):
     return s["name"], out
 
 
+def overview_report_lines(style, servers):
+    ov = master_overview(servers)
+    out = []
+    out.append(style.label(pad(t("l_totalservers"), 18)) + " " + style.accent(str(ov["servers"]))
+               + style.dim("  (%d %s)" % (ov["occupied"], t("l_occupied"))))
+    out.append(style.label(pad(t("players_online"), 18)) + " " + style.accent(str(ov["players"])))
+    out.append("")
+    out.append(style.title(t("l_byregion").upper()))
+    for region, n in _top(ov["by_region"], 12):
+        out.append("  " + style.label(pad(str(region), 8)) + " " + style.value(str(n)))
+    out.append("")
+    out.append(style.title(t("l_bygametype").upper()))
+    for gt, n in _top(ov["by_gametype"], 12):
+        out.append("  " + style.label(pad(str(gt), 18)) + " " + style.value(str(n)))
+    out.append("")
+    out.append(style.title(t("l_topmaps").upper()))
+    for mp, n in _top(ov["by_map"], 12):
+        out.append("  " + style.value(pad(str(mp), 24)) + " " + style.accent(str(n)))
+    return out
+
+
+def find_report_lines(style, servers, name):
+    hits = find_player_servers(servers, name)
+    out = []
+    for s, c in hits:
+        spec = style.dim(" [spec]") if not c.get("is_player", True) else ""
+        out.append(
+            style.accent(pad(str(c.get("name", "?")), 18)) + " "
+            + style.dim(pad(str(s["region"]).upper(), 5)) + " "
+            + style.value(pad(str(s["name"]), 30)) + " "
+            + style.label(str(s["map"])) + spec
+        )
+    return hits, out
+
+
+def compare_report_lines(style, d1, d2):
+    n1 = d1.get("player", "?")
+    n2 = d2.get("player", "?")
+
+    def cell(block, key="points"):
+        if not isinstance(block, dict):
+            return "-"
+        rank = block.get("rank")
+        pts = block.get(key)
+        if rank in (None, 0):
+            return t("unranked")
+        if pts is not None:
+            return "#%s (%s)" % (rank, pts)
+        return "#%s" % rank
+
+    rows = [
+        (t("l_points"), str((d1.get("points", {}) or {}).get("points", "?")),
+         str((d2.get("points", {}) or {}).get("points", "?"))),
+        (t("l_global"), cell(d1.get("rank")), cell(d2.get("rank"))),
+        (t("l_team"), cell(d1.get("team_rank")), cell(d2.get("team_rank"))),
+        (t("l_year"), cell(d1.get("points_last_year")), cell(d2.get("points_last_year"))),
+        (t("l_month"), cell(d1.get("points_last_month")), cell(d2.get("points_last_month"))),
+        (t("l_week"), cell(d1.get("points_last_week")), cell(d2.get("points_last_week"))),
+        (t("l_hours"), str(d1.get("hours_played_past_365_days", "-")),
+         str(d2.get("hours_played_past_365_days", "-"))),
+    ]
+    out = []
+    out.append(style.label(pad("", 16)) + " "
+               + style.accent(pad(str(n1), 20)) + " " + style.accent(pad(str(n2), 20)))
+    out.append("")
+    for label, a, b in rows:
+        out.append(style.label(pad(label, 16)) + " "
+                   + style.value(pad(a, 20)) + " " + style.value(pad(b, 20)))
+    return n1, n2, out
+
+
+def map_report_lines(style, data):
+    name = data.get("name", "?")
+    out = []
+
+    def kv(label_key, value, accent=False):
+        v = style.accent(value) if accent else style.value(value)
+        out.append(style.label(pad(t(label_key), 14)) + " " + v)
+
+    kv("l_type", str(data.get("type", "?")))
+    kv("l_points", str(data.get("points", "?")), accent=True)
+    kv("l_difficulty", difficulty_stars(data.get("difficulty")))
+    mapper = data.get("mapper")
+    if mapper:
+        kv("l_mapper", str(mapper))
+    rel = data.get("release")
+    if rel:
+        kv("l_release", fmt_date(rel))
+    fin = data.get("finishes")
+    if fin is not None:
+        kv("l_finishes", str(fin))
+    finrs = data.get("finishers")
+    if finrs is not None:
+        kv("l_finishers", str(finrs))
+    med = data.get("median_time")
+    if med is not None:
+        kv("l_median", fmt_time(med))
+    ranks = data.get("ranks", []) or []
+    if ranks:
+        out.append("")
+        out.append(style.title(t("l_toprank").upper()))
+        for r in ranks[:10]:
+            if not isinstance(r, dict):
+                continue
+            out.append(
+                style.dim(pad("#%s" % r.get("rank", "?"), 5)) + " "
+                + style.value(pad(str(r.get("player", "?")), 20)) + " "
+                + style.accent(fmt_time(r.get("time")))
+            )
+    return name, out
+
+
 # --------------------------------------------------------------------------- #
 # Non-interactive (CLI) rendering                                             #
 # --------------------------------------------------------------------------- #
@@ -509,11 +765,55 @@ def print_servers(style, servers, filt=None, limit=40, width=78):
     print(render_box(style, title, lines or [style.dim(t("no_servers"))], width))
 
 
+def print_overview(style, servers, width=58):
+    lines = overview_report_lines(style, servers)
+    print()
+    print(render_box(style, "OVERVIEW", lines, width))
+
+
+def print_find(style, servers, name, width=72):
+    hits, lines = find_report_lines(style, servers, name)
+    print()
+    if not hits:
+        print(render_box(style, "FIND \u2014 %s" % name, [style.dim(t("find_none") % name)], width))
+        return
+    title = "FIND \u2014 %s (%d)" % (name, len(hits))
+    print(render_box(style, title, lines, width))
+
+
+def print_compare(style, d1, d2, width=62):
+    n1, n2, lines = compare_report_lines(style, d1, d2)
+    print()
+    print(render_box(style, "COMPARE \u2014 %s vs %s" % (n1, n2), lines, width))
+
+
+def print_map(style, data, width=60):
+    name, lines = map_report_lines(style, data)
+    print()
+    print(render_box(style, "MAP \u2014 %s" % name, lines, width))
+
+
 # --------------------------------------------------------------------------- #
 # Curses GUI                                                                   #
 # --------------------------------------------------------------------------- #
 
 BACK = object()
+
+
+def palette_for(theme):
+    """Build a curses 256-color palette dict from the THEMES table."""
+    border, title, label, value, accent, dim = THEMES.get(theme, THEMES["ddnet"])
+
+    def n(code):
+        try:
+            return int(str(code).split(";")[0])
+        except (TypeError, ValueError):
+            return 250
+
+    return {
+        "border": n(border), "title": n(title), "label": n(label),
+        "value": n(value), "accent": n(accent), "dim": n(dim), "warn": 203,
+    }
 
 
 def interactive(theme):
@@ -523,18 +823,7 @@ def interactive(theme):
         print(t("curses_required"), file=sys.stderr)
         sys.exit(1)
 
-    PALETTE = {
-        "border": 39, "title": 81, "label": 45, "value": 250,
-        "accent": 118, "dim": 240, "warn": 203,
-    }
-    if theme == "matrix":
-        PALETTE.update(border=34, title=46, label=40, value=82, accent=118)
-    elif theme == "amber":
-        PALETTE.update(border=94, title=214, label=136, value=223, accent=208)
-    elif theme == "nord":
-        PALETTE.update(border=66, title=110, label=73, value=189, accent=152)
-    elif theme == "mono":
-        PALETTE.update(border=244, title=255, label=250, value=252, accent=248)
+    PALETTE = palette_for(theme)
 
     def run(stdscr):
         curses.curs_set(0)
@@ -577,8 +866,16 @@ def interactive(theme):
                 return
             if mode == "stats":
                 stats_flow(stdscr, ctx)
-            else:
+            elif mode == "servers":
                 servers_flow(stdscr, ctx)
+            elif mode == "overview":
+                overview_flow(stdscr, ctx)
+            elif mode == "find":
+                find_flow(stdscr, ctx)
+            elif mode == "compare":
+                compare_flow(stdscr, ctx)
+            elif mode == "map":
+                map_flow(stdscr, ctx)
 
     curses.wrapper(run)
 
@@ -596,7 +893,14 @@ def _add(stdscr, y, x, text, attr=0):
 def pick_mode(stdscr, ctx):
     import curses
     cp, pal = ctx["cp"], ctx["pal"]
-    options = [("stats", t("mode_stats")), ("servers", t("mode_servers"))]
+    options = [
+        ("stats", t("mode_stats")),
+        ("servers", t("mode_servers")),
+        ("overview", t("mode_overview")),
+        ("find", t("mode_find")),
+        ("compare", t("mode_compare")),
+        ("map", t("mode_map")),
+    ]
     idx = 0
     while True:
         stdscr.erase()
@@ -721,14 +1025,6 @@ def scroll_view(stdscr, ctx, header, lines):
             top = len(lines)
 
 
-def _plain(style_lines):
-    """Convert styled (ANSI) report lines into (plaintext, color_key) tuples."""
-    out = []
-    for ln in style_lines:
-        out.append((strip_ansi(ln), "value"))
-    return out
-
-
 def stats_flow(stdscr, ctx):
     name = prompt_text(stdscr, ctx, t("prompt_player"))
     if not name:
@@ -777,6 +1073,82 @@ def servers_flow(stdscr, ctx):
         sname, dlines = server_detail_lines(plain, chosen)
         lines = [("  " + strip_ansi(x), "value") for x in dlines]
         scroll_view(stdscr, ctx, "SERVER \u2014 %s" % sname, lines)
+
+
+def overview_flow(stdscr, ctx):
+    draw_status(stdscr, ctx, t("loading"), "accent")
+    try:
+        servers = fetch_servers()
+    except Exception as e:  # noqa: BLE001
+        show_message(stdscr, ctx, t("net_error") % e, "warn")
+        return
+    plain = Style("mono", color=False)
+    lines = [("  " + strip_ansi(x), "value") for x in overview_report_lines(plain, servers)]
+    scroll_view(stdscr, ctx, "OVERVIEW", lines)
+
+
+def find_flow(stdscr, ctx):
+    name = prompt_text(stdscr, ctx, t("prompt_find"))
+    if not name:
+        return
+    draw_status(stdscr, ctx, t("loading"), "accent")
+    try:
+        servers = fetch_servers()
+    except Exception as e:  # noqa: BLE001
+        show_message(stdscr, ctx, t("net_error") % e, "warn")
+        return
+    plain = Style("mono", color=False)
+    hits, slines = find_report_lines(plain, servers, name)
+    if not hits:
+        show_message(stdscr, ctx, t("find_none") % name, "warn")
+        return
+    lines = [("  " + strip_ansi(x), "value") for x in slines]
+    scroll_view(stdscr, ctx, "FIND \u2014 %s (%d)" % (name, len(hits)), lines)
+
+
+def compare_flow(stdscr, ctx):
+    n1 = prompt_text(stdscr, ctx, t("prompt_cmp1"))
+    if not n1:
+        return
+    n2 = prompt_text(stdscr, ctx, t("prompt_cmp2"))
+    if not n2:
+        return
+    draw_status(stdscr, ctx, t("loading"), "accent")
+    try:
+        d1 = fetch_player(n1)
+        d2 = fetch_player(n2)
+    except Exception as e:  # noqa: BLE001
+        show_message(stdscr, ctx, t("net_error") % e, "warn")
+        return
+    if not (isinstance(d1, dict) and d1.get("player")):
+        show_message(stdscr, ctx, t("not_found") % n1, "warn")
+        return
+    if not (isinstance(d2, dict) and d2.get("player")):
+        show_message(stdscr, ctx, t("not_found") % n2, "warn")
+        return
+    plain = Style("mono", color=False)
+    a, b, clines = compare_report_lines(plain, d1, d2)
+    lines = [("  " + strip_ansi(x), "value") for x in clines]
+    scroll_view(stdscr, ctx, "COMPARE \u2014 %s vs %s" % (a, b), lines)
+
+
+def map_flow(stdscr, ctx):
+    name = prompt_text(stdscr, ctx, t("prompt_map"))
+    if not name:
+        return
+    draw_status(stdscr, ctx, t("loading"), "accent")
+    try:
+        data = fetch_map(name)
+    except Exception as e:  # noqa: BLE001
+        show_message(stdscr, ctx, t("net_error") % e, "warn")
+        return
+    if not isinstance(data, dict) or not data.get("name"):
+        show_message(stdscr, ctx, t("map_not_found") % name, "warn")
+        return
+    plain = Style("mono", color=False)
+    mname, mlines = map_report_lines(plain, data)
+    lines = [("  " + strip_ansi(x), "value") for x in mlines]
+    scroll_view(stdscr, ctx, "MAP \u2014 %s" % mname, lines)
 
 
 def pick_server(stdscr, ctx, summ):
@@ -856,9 +1228,14 @@ def build_parser():
     p.add_argument("player", nargs="*", help=t("h_player"))
     p.add_argument("-p", "--player", dest="player_opt", help=t("h_p"))
     p.add_argument("-s", "--servers", action="store_true", help=t("h_servers"))
+    p.add_argument("-o", "--overview", action="store_true", help=t("h_overview"))
+    p.add_argument("--find", help=t("h_find"))
+    p.add_argument("-c", "--compare", nargs=2, metavar=("NAME1", "NAME2"), help=t("h_compare"))
+    p.add_argument("--map", dest="map_name", help=t("h_map"))
     p.add_argument("-f", "--filter", help=t("h_filter"))
     p.add_argument("-n", "--limit", type=int, default=40, help=t("h_limit"))
     p.add_argument("--theme", default="ddnet", choices=sorted(THEMES.keys()), help=t("h_theme"))
+    p.add_argument("--list-themes", action="store_true", help=t("h_listthemes"))
     p.add_argument("--json", action="store_true", help=t("h_json"))
     p.add_argument("--no-color", action="store_true", help=t("h_nocolor"))
     p.add_argument("--version", action="version", version="ddtui " + __version__)
@@ -870,7 +1247,72 @@ def main(argv=None):
     color = supports_color(force_no=args.no_color)
     style = Style(args.theme, color=color)
 
+    if args.list_themes:
+        print("Available themes: " + ", ".join(sorted(THEMES.keys())))
+        return 0
+
     name = args.player_opt or (" ".join(args.player).strip() if args.player else "")
+
+    if args.overview:
+        try:
+            servers = fetch_servers()
+        except Exception as e:  # noqa: BLE001
+            print(t("net_error") % e, file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps(master_overview(servers), indent=2, ensure_ascii=False))
+        else:
+            print_overview(style, servers)
+        return 0
+
+    if args.find:
+        try:
+            servers = fetch_servers()
+        except Exception as e:  # noqa: BLE001
+            print(t("net_error") % e, file=sys.stderr)
+            return 1
+        if args.json:
+            hits = [{"server": s["name"], "region": s["region"], "map": s["map"],
+                     "player": c.get("name")} for s, c in find_player_servers(servers, args.find)]
+            print(json.dumps(hits, indent=2, ensure_ascii=False))
+        else:
+            print_find(style, servers, args.find)
+        return 0
+
+    if args.compare:
+        n1, n2 = args.compare
+        try:
+            d1 = fetch_player(n1)
+            d2 = fetch_player(n2)
+        except Exception as e:  # noqa: BLE001
+            print(t("net_error") % e, file=sys.stderr)
+            return 1
+        if not (isinstance(d1, dict) and d1.get("player")):
+            print(t("not_found") % n1, file=sys.stderr)
+            return 2
+        if not (isinstance(d2, dict) and d2.get("player")):
+            print(t("not_found") % n2, file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps({"a": d1, "b": d2}, indent=2, ensure_ascii=False))
+        else:
+            print_compare(style, d1, d2)
+        return 0
+
+    if args.map_name:
+        try:
+            data = fetch_map(args.map_name)
+        except Exception as e:  # noqa: BLE001
+            print(t("net_error") % e, file=sys.stderr)
+            return 1
+        if not isinstance(data, dict) or not data.get("name"):
+            print(t("map_not_found") % args.map_name, file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+        else:
+            print_map(style, data)
+        return 0
 
     if args.servers:
         try:
