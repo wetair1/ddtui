@@ -1,8 +1,12 @@
 # ddtui
 
-![python](https://img.shields.io/badge/python-3.7%2B-blue) ![deps](https://img.shields.io/badge/dependencies-0-success) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-terminal-lightgrey)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-success.svg)](#)
+[![Platform](https://img.shields.io/badge/platform-terminal-lightgrey.svg)](#)
+[![Localization](https://img.shields.io/badge/i18n-RU%20%2F%20EN-blue.svg)](#)
 
-**ASCII / curses dashboard for [DDraceNetwork](https://ddnet.org) (DDNet), right in your terminal.**
+> **ASCII / curses dashboard for [DDraceNetwork](https://ddnet.org) (DDNet), right in your terminal.**
 
 Two tools in one interactive menu (just like [`iuse`](https://github.com/wetair1/iuse)):
 
@@ -11,9 +15,16 @@ Two tools in one interactive menu (just like [`iuse`](https://github.com/wetair1
 
 Zero dependencies, pure Python 3 standard library. Auto-localized **RU / EN**.
 
----
+## ✨ Features
 
-## Install
+- 👤 **Player stats** — points, global & team ranks, points by period and map type, recent finishes
+- 🌐 **Live server browser** — fuzzy search the online server list with map, gametype, region and players
+- 🎨 **Themes** — `ddnet`, `matrix`, `amber`, `nord`, `mono`
+- 🌍 **Auto localization** — RU / EN based on your `LANG`
+- 📦 **`--json` mode** for scripting
+- 🪶 **Zero dependencies** — pure Python 3 standard library
+
+## 📥 Installation
 
 ```bash
 git clone https://github.com/wetair1/ddtui
@@ -23,13 +34,15 @@ chmod +x ddtui.py
 
 No `pip install` needed — it only uses the standard library.
 
-Optional, run it from anywhere:
+Optionally, run it from anywhere:
 
 ```bash
 ln -s "$PWD/ddtui.py" ~/.local/bin/ddtui
 ```
 
-## Usage
+Requires **Python 3.8+** with the standard `curses` module (bundled on Linux/macOS).
+
+## 🚀 Usage
 
 ```bash
 # Interactive GUI (arrow keys, live search) — the default:
@@ -63,7 +76,7 @@ ddtui — what do you want?
 - **Player stats** → type a name → scrollable stats card.
 - **Server browser** → type to fuzzy-search the live server list → Enter to see map, gametype and the player list.
 
-## Options
+## ⚙️ Options
 
 | Flag | Description |
 |------|-------------|
@@ -77,14 +90,14 @@ ddtui — what do you want?
 | `--no-color` | disable color (also respects `NO_COLOR`) |
 | `--version` | print version |
 
-## Data sources
+## 📡 Data sources
 
 - Player stats: `https://ddnet.org/players/?json2=<name>`
 - Server list: `https://master1.ddnet.org/ddnet/15/servers.json`
 
 These are public DDNet endpoints. Be nice and don't hammer them.
 
-## License
+## 📄 License
 
 MIT — see [LICENSE](LICENSE).
 
@@ -93,7 +106,7 @@ MIT — see [LICENSE](LICENSE).
 <details>
 <summary>🇷🇺 Русский</summary>
 
-## ddtui
+<br>
 
 **ASCII / curses дашборд для [DDraceNetwork](https://ddnet.org) (DDNet) прямо в терминале.**
 
