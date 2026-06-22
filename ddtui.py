@@ -32,7 +32,7 @@ import unicodedata
 import urllib.parse
 import urllib.request
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 PLAYER_API = "https://ddnet.org/players/?json2="
 SERVERS_API = "https://master1.ddnet.org/ddnet/15/servers.json"
@@ -660,6 +660,15 @@ def prompt_text(stdscr, ctx, title):
         curses.curs_set(0)
 
 
+def draw_status(stdscr, ctx, text, color_key="accent"):
+    """Draw a transient status line WITHOUT waiting for a keypress."""
+    import curses
+    cp, pal = ctx["cp"], ctx["pal"]
+    stdscr.erase()
+    _add(stdscr, 1, 1, text, cp(pal[color_key]) | curses.A_BOLD)
+    stdscr.refresh()
+
+
 def show_message(stdscr, ctx, text, color_key="dim"):
     import curses
     cp, pal = ctx["cp"], ctx["pal"]
@@ -712,11 +721,19 @@ def scroll_view(stdscr, ctx, header, lines):
             top = len(lines)
 
 
+def _plain(style_lines):
+    """Convert styled (ANSI) report lines into (plaintext, color_key) tuples."""
+    out = []
+    for ln in style_lines:
+        out.append((strip_ansi(ln), "value"))
+    return out
+
+
 def stats_flow(stdscr, ctx):
     name = prompt_text(stdscr, ctx, t("prompt_player"))
     if not name:
         return
-    show_message(stdscr, ctx, t("loading"), "accent")
+    draw_status(stdscr, ctx, t("loading"), "accent")
     try:
         data = fetch_player(name)
     except Exception as e:  # noqa: BLE001
@@ -742,7 +759,7 @@ def stats_flow(stdscr, ctx):
 
 
 def servers_flow(stdscr, ctx):
-    show_message(stdscr, ctx, t("loading"), "accent")
+    draw_status(stdscr, ctx, t("loading"), "accent")
     try:
         servers = fetch_servers()
     except Exception as e:  # noqa: BLE001
