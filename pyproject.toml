@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ddtui"
+version = "0.1.1"
+description = "ASCII/curses terminal dashboard for DDNet — player stats and a live server browser."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [{ name = "wetair1" }]
+keywords = ["ddnet", "terminal", "tui", "curses", "dashboard", "ascii"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Environment :: Console",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/wetair1/ddtui"
+Repository = "https://github.com/wetair1/ddtui"
+
+[project.scripts]
+ddtui = "ddtui:main"
+
+[tool.setuptools]
+py-modules = ["ddtui"]
